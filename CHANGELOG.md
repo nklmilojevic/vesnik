@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.1 - 2026-10-20
+
+This release makes error messages from failed `claude` and `codex` runs shorter and easier to read.
+
+### Fixes
+
+- Error messages from `claude` and `codex` failures now show only the last non-empty line, shortened. Before, a failing `codex` run printed the whole startup banner, and the real error was hard to find.
+
 ## v0.1.0 - 2026-10-20
 
 This first release of vesnik writes release notes and picks version bumps with AI. A person reviews the result before vesnik changes anything.
