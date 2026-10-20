@@ -70,6 +70,8 @@ type Item struct {
 	Pkg      config.Package
 	Template version.Template
 	Bumper   ecosystem.Bumper
+	// Dir is the package's absolute directory.
+	Dir string
 	// Changelog is the changelog path relative to the repository root, or
 	// empty when changelogs are off.
 	Changelog string
@@ -231,7 +233,8 @@ func (e *Env) item(ctx context.Context, pkg config.Package, pre string) (*Item, 
 	if err != nil {
 		return nil, err
 	}
-	bumper, err := ecosystem.For(pkg.Ecosystem, filepath.Join(e.Repo.Dir, pkg.Path))
+	dir := filepath.Join(e.Repo.Dir, pkg.Path)
+	bumper, err := ecosystem.For(pkg.Ecosystem, dir)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +244,7 @@ func (e *Env) item(ctx context.Context, pkg config.Package, pre string) (*Item, 
 	}
 	latest, final := tmpl.Latest(tags)
 	it := &Item{
-		Pkg: pkg, Template: tmpl, Bumper: bumper,
+		Pkg: pkg, Template: tmpl, Bumper: bumper, Dir: dir,
 		Changelog: e.Cfg.Changelog.PathFor(pkg.Path),
 		Current:   latest.Version, CurrentTag: latest.Tag,
 		LastFinal: final.Version, LastFinalTag: final.Tag,
@@ -340,7 +343,7 @@ func (p *Plan) Render() string {
 // Files lists the repository files the release changes for this item.
 func (it *Item) Files() []string {
 	var files []string
-	for _, f := range it.Bumper.Files(it.Pkg.Path) {
+	for _, f := range it.Bumper.Files(it.Dir) {
 		files = append(files, filepath.ToSlash(filepath.Join(it.Pkg.Path, f)))
 	}
 	for _, r := range it.Pkg.Files {

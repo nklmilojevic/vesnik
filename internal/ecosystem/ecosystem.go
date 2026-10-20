@@ -84,7 +84,24 @@ type Cargo struct{}
 
 func (Cargo) Name() string           { return "cargo" }
 func (Cargo) Detect(dir string) bool { return exists(filepath.Join(dir, "Cargo.toml")) }
-func (Cargo) Files(string) []string  { return []string{"Cargo.toml", "Cargo.lock"} }
+
+// Files names the Cargo.lock cargo update refreshes: a workspace member
+// shares the workspace root's, so look upward to the repository root.
+func (Cargo) Files(dir string) []string {
+	files := []string{"Cargo.toml"}
+	for d := dir; ; d = filepath.Dir(d) {
+		if exists(filepath.Join(d, "Cargo.lock")) {
+			if rel, err := filepath.Rel(dir, filepath.Join(d, "Cargo.lock")); err == nil {
+				files = append(files, filepath.ToSlash(rel))
+			}
+			break
+		}
+		if exists(filepath.Join(d, ".git")) || filepath.Dir(d) == d {
+			break
+		}
+	}
+	return files
+}
 
 func (Cargo) Write(ctx context.Context, dir, version string) error {
 	err := rewrite(filepath.Join(dir, "Cargo.toml"), func(b []byte) ([]byte, error) {

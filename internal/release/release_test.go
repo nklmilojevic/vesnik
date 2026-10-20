@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -487,6 +488,24 @@ func TestReplayComparesWithTheReleasedTag(t *testing.T) {
 	}
 	if clean, _ := f.Clean(ctx); !clean || f.Git("tag", "--list", "v1.0.2*") != "" {
 		t.Fatal("replay changed the repository")
+	}
+}
+
+func TestPlanNamesTheWorkspaceCargoLockForAMember(t *testing.T) {
+	cfg := "packages:\n  - path: crates/sys\n    ecosystem: cargo\n    tag: \"v{version}\"\n"
+	f := newFixture(t, cfg, map[string]string{
+		"Cargo.toml":            "[workspace]\nmembers = [\"crates/sys\"]\n",
+		"Cargo.lock":            "version = 4\n",
+		"crates/sys/Cargo.toml": "[package]\nname = \"sys\"\nversion = \"0.1.1\"\n",
+	}, "v0.1.1")
+	f.commitAndPush(t, "crates/sys/src/lib.rs", "", "fix: something")
+	plan, err := f.env.Plan(context.Background(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"crates/sys/Cargo.toml", "Cargo.lock", "crates/sys/CHANGELOG.md"}
+	if got := plan.Items[0].Files(); !slices.Equal(got, want) {
+		t.Fatalf("files = %v, want %v", got, want)
 	}
 }
 

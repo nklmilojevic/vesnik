@@ -17,10 +17,27 @@ type TestRepo struct {
 	t *testing.T
 }
 
+// repoEnv points git at a repository other than the working directory. Git
+// sets these for hooks, so tests run from a pre-push hook would otherwise
+// init, configure and commit in the developer's repository.
+var repoEnv = []string{
+	"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
+	"GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+}
+
 // New creates an empty repository with a fixed identity and signing
-// turned off, so tests never depend on the developer's git config.
+// turned off, so tests never depend on the developer's git config or on
+// the repository a hook runs them in.
 func New(t *testing.T) *TestRepo {
 	t.Helper()
+	for _, k := range repoEnv {
+		if v, ok := os.LookupEnv(k); ok {
+			t.Setenv(k, v) // restores the value after the test
+			if err := os.Unsetenv(k); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	tr := &TestRepo{Repo: gitx.Repo{Dir: t.TempDir()}, t: t}
