@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.0 - 2026-10-20
+
+This release gives the user more control over the suggested version bump. The user can now limit the bump and set a fallback bump.
+
+### New features
+
+- Add the `max_bump` config field. It limits the bump that the model suggests, so a project that never changes its major version does not get a major bump. An explicit `--bump` is not limited.
+- Add the `--default-bump` flag. It sets the bump that the tool uses when the model is not available.
+
 ## v0.1.1 - 2026-10-20
 
 This release makes error messages from failed `claude` and `codex` runs shorter and easier to read.
