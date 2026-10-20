@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Masterminds/semver/v3"
-	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/nklmilojevic/vesnik/internal/ai"
 	"github.com/nklmilojevic/vesnik/internal/config"
@@ -58,14 +58,14 @@ func newModel(t *testing.T, p Proposer) (*Model, *release.Plan) {
 func press(m *Model, keys ...string) tea.Cmd {
 	var cmd tea.Cmd
 	for _, k := range keys {
-		var msg tea.KeyMsg
+		var msg tea.KeyPressMsg
 		switch k {
 		case "enter":
-			msg = tea.KeyMsg{Type: tea.KeyEnter}
+			msg = tea.KeyPressMsg{Code: tea.KeyEnter}
 		case "esc":
-			msg = tea.KeyMsg{Type: tea.KeyEsc}
+			msg = tea.KeyPressMsg{Code: tea.KeyEsc}
 		default:
-			msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
+			msg = tea.KeyPressMsg{Code: []rune(k)[0], Text: k}
 		}
 		_, cmd = m.Update(msg)
 	}
@@ -77,8 +77,8 @@ func TestStartsOnFirstActiveAndAccepts(t *testing.T) {
 	if m.current().Pkg.Name != "api" {
 		t.Fatalf("cursor on %s", m.current().Pkg.Name)
 	}
-	if !strings.Contains(m.View(), "api@v1.0.1") && !strings.Contains(m.view.View(), "api@v1.0.1") {
-		t.Fatalf("view lacks the tag:\n%s", m.View())
+	if !strings.Contains(m.View().Content, "api@v1.0.1") && !strings.Contains(m.view.View(), "api@v1.0.1") {
+		t.Fatalf("view lacks the tag:\n%s", m.View().Content)
 	}
 	if cmd := press(m, "enter"); cmd == nil || !m.Accepted() {
 		t.Fatal("enter did not accept")

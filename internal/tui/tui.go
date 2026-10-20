@@ -6,36 +6,41 @@ package tui
 import (
 	"context"
 	"fmt"
+	"image/color"
 	"os"
 	"os/exec"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/glamour/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/nklmilojevic/vesnik/internal/ai"
 	"github.com/nklmilojevic/vesnik/internal/release"
 )
 
-// Catppuccin Latte for light terminals, Mocha for dark ones.
-var (
-	accent  = lipgloss.AdaptiveColor{Light: "#8839ef", Dark: "#cba6f7"}
-	good    = lipgloss.AdaptiveColor{Light: "#40a02b", Dark: "#a6e3a1"}
-	warn    = lipgloss.AdaptiveColor{Light: "#df8e1d", Dark: "#f9e2af"}
-	bad     = lipgloss.AdaptiveColor{Light: "#d20f39", Dark: "#f38ba8"}
-	muted   = lipgloss.AdaptiveColor{Light: "#8c8fa1", Dark: "#7f849c"}
-	surface = lipgloss.AdaptiveColor{Light: "#ccd0da", Dark: "#45475a"}
+// styles holds the review screen's colours: Catppuccin Latte for light
+// terminals, Mocha for dark ones.
+type styles struct {
+	title, selected, muted, warn, err, good, list lipgloss.Style
+}
 
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(accent)
-	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(accent)
-	mutedStyle    = lipgloss.NewStyle().Foreground(muted)
-	warnStyle     = lipgloss.NewStyle().Foreground(warn)
-	errStyle      = lipgloss.NewStyle().Foreground(bad)
-	goodStyle     = lipgloss.NewStyle().Foreground(good)
-	listStyle     = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderRight(true).BorderForeground(surface).PaddingRight(1)
-)
+func newStyles(dark bool) styles {
+	pick := lipgloss.LightDark(dark)
+	c := func(l, d string) color.Color { return pick(lipgloss.Color(l), lipgloss.Color(d)) }
+	accent := c("#8839ef", "#cba6f7")
+	return styles{
+		title:    lipgloss.NewStyle().Bold(true).Foreground(accent),
+		selected: lipgloss.NewStyle().Bold(true).Foreground(accent),
+		muted:    lipgloss.NewStyle().Foreground(c("#8c8fa1", "#7f849c")),
+		warn:     lipgloss.NewStyle().Foreground(c("#df8e1d", "#f9e2af")),
+		err:      lipgloss.NewStyle().Foreground(c("#d20f39", "#f38ba8")),
+		good:     lipgloss.NewStyle().Foreground(c("#40a02b", "#a6e3a1")),
+		list: lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderRight(true).
+			BorderForeground(c("#ccd0da", "#45475a")).PaddingRight(1),
+	}
+}
 
 const listWidth = 34
 
@@ -50,6 +55,7 @@ type Model struct {
 	plan     *release.Plan
 	proposer Proposer
 	style    string
+	st       styles
 
 	cursor   int
 	view     viewport.Model
@@ -64,8 +70,9 @@ type Model struct {
 // New builds the review screen. style is a glamour style name, such as
 // "dark", "light" or "notty".
 func New(ctx context.Context, plan *release.Plan, p Proposer, style string) *Model {
-	m := &Model{ctx: ctx, plan: plan, proposer: p, style: style, busy: map[*release.Item]bool{}, width: 100, height: 30}
-	m.view = viewport.New(m.width-listWidth-3, m.height-4)
+	m := &Model{ctx: ctx, plan: plan, proposer: p, style: style, st: newStyles(style == "dark"),
+		busy: map[*release.Item]bool{}, width: 100, height: 30}
+	m.view = viewport.New(viewport.WithWidth(m.width-listWidth-3), viewport.WithHeight(m.height-4))
 	m.cursor = firstActive(plan)
 	m.refresh()
 	return m
@@ -103,21 +110,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.view.Width = max(20, msg.Width-listWidth-3)
-		m.view.Height = max(5, msg.Height-4)
+		m.view.SetWidth(max(20, msg.Width-listWidth-3))
+		m.view.SetHeight(max(5, msg.Height-4))
 		m.refresh()
 		return m, nil
 
 	case regenMsg:
 		delete(m.busy, msg.it)
 		if msg.err != nil {
-			m.status = errStyle.Render("regenerate failed: " + msg.err.Error())
+			m.status = m.st.err.Render("regenerate failed: " + msg.err.Error())
 		} else {
 			msg.it.Proposal, msg.it.Notes, msg.it.AIError = msg.p, msg.p.Notes, nil
 			if err := m.plan.SetBump(msg.it, m.plan.Cap(msg.p.Bump)); err != nil {
-				m.status = errStyle.Render(err.Error())
+				m.status = m.st.err.Render(err.Error())
 			} else {
-				m.status = goodStyle.Render("regenerated " + msg.it.Pkg.Name)
+				m.status = m.st.good.Render("regenerated " + msg.it.Pkg.Name)
 			}
 		}
 		m.refresh()
@@ -126,29 +133,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case editedMsg:
 		defer func() { _ = os.Remove(msg.path) }()
 		if msg.err != nil {
-			m.status = errStyle.Render("editor: " + msg.err.Error())
+			m.status = m.st.err.Render("editor: " + msg.err.Error())
 			return m, nil
 		}
 		data, err := os.ReadFile(msg.path)
 		switch notes := strings.TrimSpace(string(data)); {
 		case err != nil:
-			m.status = errStyle.Render(err.Error())
+			m.status = m.st.err.Render(err.Error())
 		case notes == "":
-			m.status = warnStyle.Render("empty notes; kept the previous text")
+			m.status = m.st.warn.Render("empty notes; kept the previous text")
 		default:
 			msg.it.Notes = notes
-			m.status = goodStyle.Render("edited " + msg.it.Pkg.Name)
+			m.status = m.st.good.Render("edited " + msg.it.Pkg.Name)
 		}
 		m.refresh()
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.key(msg)
 	}
 	return m, nil
 }
 
-func (m *Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	it := m.current()
 	switch msg.String() {
 	case "ctrl+c", "q", "esc":
@@ -166,11 +173,11 @@ func (m *Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		if len(m.busy) > 0 {
-			m.status = warnStyle.Render("wait for the model to finish")
+			m.status = m.st.warn.Render("wait for the model to finish")
 			return m, nil
 		}
 		if len(m.plan.Active()) == 0 {
-			m.status = warnStyle.Render("every package is skipped; nothing to release")
+			m.status = m.st.warn.Render("every package is skipped; nothing to release")
 			return m, nil
 		}
 		m.accepted = true
@@ -180,14 +187,14 @@ func (m *Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if err := m.plan.SetBump(it, it.Bump.Cycle()); err != nil {
-			m.status = errStyle.Render(err.Error())
+			m.status = m.st.err.Render(err.Error())
 		} else {
 			m.status = ""
 		}
 	case "s":
 		switch {
 		case it.Next == nil:
-			m.status = warnStyle.Render(it.Pkg.Name + " has no changes to release")
+			m.status = m.st.warn.Render(it.Pkg.Name + " has no changes to release")
 		case it.Skip:
 			it.Skip, it.Why = false, ""
 		default:
@@ -198,7 +205,7 @@ func (m *Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.busy[it] = true
-		m.status = mutedStyle.Render("asking the model about " + it.Pkg.Name + "…")
+		m.status = m.st.muted.Render("asking the model about " + it.Pkg.Name + "…")
 		m.refresh()
 		return m, m.regenerate(it)
 	case "e":
@@ -254,7 +261,7 @@ func (m *Model) refresh() {
 	it := m.current()
 	var b strings.Builder
 	if it.Skip && it.Next == nil {
-		fmt.Fprintf(&b, "%s\n\n%s\n", titleStyle.Render(it.Pkg.Name), mutedStyle.Render("Skipped: "+it.Why))
+		fmt.Fprintf(&b, "%s\n\n%s\n", m.st.title.Render(it.Pkg.Name), m.st.muted.Render("Skipped: "+it.Why))
 		m.view.SetContent(b.String())
 		return
 	}
@@ -262,33 +269,33 @@ func (m *Model) refresh() {
 	if it.Current != nil {
 		from = it.Current.String()
 	}
-	fmt.Fprintf(&b, "%s  %s → %s  %s\n", titleStyle.Render(it.Pkg.Name), from,
-		selectedStyle.Render(it.Next.String()), mutedStyle.Render(string(it.Bump)+" bump, tag "+it.Tag))
+	fmt.Fprintf(&b, "%s  %s → %s  %s\n", m.st.title.Render(it.Pkg.Name), from,
+		m.st.selected.Render(it.Next.String()), m.st.muted.Render(string(it.Bump)+" bump, tag "+it.Tag))
 	if it.Skip {
-		b.WriteString(warnStyle.Render("Skipped in review; press s to include it again.") + "\n")
+		b.WriteString(m.st.warn.Render("Skipped in review; press s to include it again.") + "\n")
 	}
 	if w := it.Warning(); w != "" {
-		b.WriteString(warnStyle.Render("Warning: "+w) + "\n")
+		b.WriteString(m.st.warn.Render("Warning: "+w) + "\n")
 	}
 	if it.AIError != nil {
 		msg := fmt.Sprintf("AI unavailable: %v. The release uses GitHub's generated notes; press r to retry or e to write notes.", it.AIError)
-		b.WriteString(warnStyle.Render(wrap(msg, m.view.Width)) + "\n")
+		b.WriteString(m.st.warn.Render(wrap(msg, m.view.Width())) + "\n")
 	}
 	if r := it.Proposal.Reasoning; r != "" {
-		b.WriteString(mutedStyle.Render(wrap("Why: "+r, m.view.Width)) + "\n")
+		b.WriteString(m.st.muted.Render(wrap("Why: "+r, m.view.Width())) + "\n")
 	}
 	summary := fmt.Sprintf("%d commits since %s · files: %s",
 		len(it.Changes.Changes), or(it.Base, "the first commit"), strings.Join(it.Files(), ", "))
-	b.WriteString(mutedStyle.Render(wrap(summary, m.view.Width)) + "\n")
+	b.WriteString(m.st.muted.Render(wrap(summary, m.view.Width())) + "\n")
 	if m.busy[it] {
-		b.WriteString("\n" + mutedStyle.Render("Regenerating…") + "\n")
+		b.WriteString("\n" + m.st.muted.Render("Regenerating…") + "\n")
 	}
 	b.WriteString(m.render(it.Notes))
 	m.view.SetContent(b.String())
 }
 
 func (m *Model) render(md string) string {
-	r, err := glamour.NewTermRenderer(glamour.WithStandardStyle(m.style), glamour.WithWordWrap(max(20, m.view.Width-2)))
+	r, err := glamour.NewTermRenderer(glamour.WithStandardStyle(m.style), glamour.WithWordWrap(max(20, m.view.Width()-2)))
 	if err != nil {
 		return "\n" + md
 	}
@@ -299,39 +306,41 @@ func (m *Model) render(md string) string {
 	return out
 }
 
-func (m *Model) View() string {
+func (m *Model) View() tea.View {
 	if m.quitting || m.accepted {
-		return ""
+		return tea.NewView("")
 	}
 	var list strings.Builder
-	list.WriteString(titleStyle.Render("vesnik release") + "\n\n")
+	list.WriteString(m.st.title.Render("vesnik release") + "\n\n")
 	for i, it := range m.plan.Items {
 		line := fmt.Sprintf("%-12s", truncate(it.Pkg.Name, 12))
 		switch {
 		case it.Skip:
-			line = mutedStyle.Render(line + " skip")
+			line = m.st.muted.Render(line + " skip")
 		default:
 			line += " " + it.Next.String()
 			if it.Warning() != "" {
-				line += warnStyle.Render(" !")
+				line += m.st.warn.Render(" !")
 			}
 			if m.busy[it] {
-				line += mutedStyle.Render(" …")
+				line += m.st.muted.Render(" …")
 			}
 		}
 		if i == m.cursor {
-			line = selectedStyle.Render("▸ ") + line
+			line = m.st.selected.Render("▸ ") + line
 		} else {
 			line = "  " + line
 		}
 		list.WriteString(line + "\n")
 	}
 	body := lipgloss.JoinHorizontal(lipgloss.Top,
-		listStyle.Width(listWidth).Height(m.view.Height).Render(list.String()),
+		m.st.list.Width(listWidth).Height(m.view.Height()).Render(list.String()),
 		" "+m.view.View(),
 	)
-	help := mutedStyle.Render("enter accept · e edit · r regenerate · b bump · s skip · j/k move · pgup/pgdn scroll · q abort")
-	return body + "\n" + m.status + "\n" + help
+	help := m.st.muted.Render("enter accept · e edit · r regenerate · b bump · s skip · j/k move · pgup/pgdn scroll · q abort")
+	v := tea.NewView(body + "\n" + m.status + "\n" + help)
+	v.AltScreen = true
+	return v
 }
 
 func truncate(s string, n int) string {
@@ -355,11 +364,11 @@ func wrap(s string, width int) string {
 // Run shows the review screen and reports whether the user accepted.
 func Run(ctx context.Context, plan *release.Plan, p Proposer) (bool, error) {
 	style := "light"
-	if lipgloss.HasDarkBackground() {
+	if lipgloss.HasDarkBackground(os.Stdin, os.Stdout) {
 		style = "dark"
 	}
 	m := New(ctx, plan, p, style)
-	if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx)).Run(); err != nil {
+	if _, err := tea.NewProgram(m, tea.WithContext(ctx)).Run(); err != nil {
 		return false, err
 	}
 	return m.Accepted(), nil
