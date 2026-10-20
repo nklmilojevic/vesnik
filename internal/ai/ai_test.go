@@ -157,3 +157,11 @@ func TestClaudeErrorOnNonZeroExitShowsResult(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestCLIErrorShowsTheLastLine(t *testing.T) {
+	bin := fakeBin(t, "codex", `cat >/dev/null; printf 'OpenAI Codex v1\n--------\nmodel: x\n\nERROR: model x is not supported\n' >&2; exit 1`)
+	_, err := Propose(context.Background(), &Codex{Bin: bin}, req)
+	if err == nil || !strings.HasSuffix(err.Error(), "codex: exit status 1: ERROR: model x is not supported") {
+		t.Fatalf("err = %v", err)
+	}
+}

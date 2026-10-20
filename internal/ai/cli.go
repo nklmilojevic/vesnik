@@ -123,9 +123,9 @@ func run(ctx context.Context, bin, dir, stdin string, args ...string) ([]byte, e
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
+		msg := lastLine(stderr.String())
 		if msg == "" {
-			msg = strings.TrimSpace(stdout.String())
+			msg = lastLine(stdout.String())
 		}
 		if errors.Is(ctx.Err(), context.Canceled) {
 			return nil, ctx.Err()
@@ -133,4 +133,15 @@ func run(ctx context.Context, bin, dir, stdin string, args ...string) ([]byte, e
 		return stdout.Bytes(), fmt.Errorf("%s: %v: %s", bin, err, msg)
 	}
 	return stdout.Bytes(), nil
+}
+
+// lastLine returns the last non-empty line of a CLI's output, shortened.
+// CLIs print banners and progress first and the error last.
+func lastLine(out string) string {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	line := strings.TrimSpace(lines[len(lines)-1])
+	if len(line) > 300 {
+		line = line[:300] + "…"
+	}
+	return line
 }
