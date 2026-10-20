@@ -32,7 +32,8 @@ The dev shell installs the lefthook hooks on first entry. Never commit with
   credential helpers apply. Do not replace it with a git library.
 - Version files are edited in place. Never re-marshal a user's manifest.
 - When `go.mod` changes, run `go mod tidy` and update `vendorHash` in
-  `package.nix` (`nix build` prints the new hash).
+  `package.nix` (`nix build` prints the new hash). On Renovate PRs the
+  vendor-hash workflow does this for you.
 - Keep go.mod's `go` directive at or below the Go in the flake's nixpkgs;
   the dev shell, CI and the package all build with that Go.
 
