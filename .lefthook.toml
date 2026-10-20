@@ -1,0 +1,23 @@
+# Run inside the Nix dev shell, which provides every tool.
+
+[pre-commit.commands.gofmt]
+glob = "*.go"
+run = "gofmt -w {staged_files}"
+stage_fixed = true
+
+[pre-commit.commands.golangci-lint]
+glob = "*.go"
+run = "golangci-lint run"
+
+[pre-commit.commands.tidy]
+glob = "go.{mod,sum}"
+run = "go mod tidy"
+stage_fixed = true
+
+[pre-commit.commands.nixpkgs-fmt]
+glob = "*.nix"
+run = "nixpkgs-fmt {staged_files}"
+stage_fixed = true
+
+[pre-push.commands.test]
+run = "just test"

@@ -1,0 +1,55 @@
+version: 2
+project_name: vesnik
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: vesnik
+    main: ./cmd/vesnik
+    binary: vesnik
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Tag }}
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+# macOS binaries are signed and notarized when the signing secrets exist
+# (GoReleaser uses quill for this); without them the step is skipped.
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      ids: [vesnik]
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: true
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+# vesnik writes its own release notes; GoReleaser only attaches binaries to
+# the release vesnik already published.
+changelog:
+  disable: true
+
+release:
+  mode: keep-existing
