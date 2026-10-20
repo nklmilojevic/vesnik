@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"image/color"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,12 +84,34 @@ func TestStartsOnFirstActiveAndAccepts(t *testing.T) {
 	if cmd := press(m, "enter"); cmd == nil || !m.Accepted() {
 		t.Fatal("enter did not accept")
 	}
+	if !m.View().AltScreen {
+		t.Fatal("final view left the alternate screen")
+	}
 }
 
 func TestAbort(t *testing.T) {
 	m, _ := newModel(t, fakeProposer{})
 	if cmd := press(m, "q"); cmd == nil || m.Accepted() {
 		t.Fatal("q did not abort")
+	}
+	if !m.View().AltScreen {
+		t.Fatal("final view left the alternate screen")
+	}
+}
+
+func TestBackgroundColorRestyles(t *testing.T) {
+	m, _ := newModel(t, fakeProposer{})
+	m.style = "light"
+	if cmd := m.Init(); cmd == nil {
+		t.Fatal("Init does not ask for the background colour")
+	}
+	m.Update(tea.BackgroundColorMsg{Color: color.Black})
+	if m.style != "dark" || m.st.title.GetForeground() != newStyles(true).title.GetForeground() {
+		t.Fatalf("dark background left style %q", m.style)
+	}
+	m.Update(tea.BackgroundColorMsg{Color: color.White})
+	if m.style != "light" || m.st.title.GetForeground() != newStyles(false).title.GetForeground() {
+		t.Fatalf("light background left style %q", m.style)
 	}
 }
 

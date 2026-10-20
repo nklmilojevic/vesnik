@@ -90,7 +90,7 @@ func firstActive(plan *release.Plan) int {
 // Accepted reports whether the user accepted the plan.
 func (m *Model) Accepted() bool { return m.accepted }
 
-func (m *Model) Init() tea.Cmd { return nil }
+func (m *Model) Init() tea.Cmd { return tea.RequestBackgroundColor }
 
 type regenMsg struct {
 	it  *release.Item
@@ -108,6 +108,14 @@ func (m *Model) current() *release.Item { return m.plan.Items[m.cursor] }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.BackgroundColorMsg:
+		m.st = newStyles(msg.IsDark())
+		if m.style != "notty" {
+			m.style = glamourStyle(msg.IsDark())
+		}
+		m.refresh()
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.view.SetWidth(max(20, msg.Width-listWidth-3))
@@ -308,7 +316,11 @@ func (m *Model) render(md string) string {
 
 func (m *Model) View() tea.View {
 	if m.quitting || m.accepted {
-		return tea.NewView("")
+		// Stay on the alternate screen so the empty final frame is not drawn
+		// on the user's terminal before Bubble Tea restores it.
+		v := tea.NewView("")
+		v.AltScreen = true
+		return v
 	}
 	var list strings.Builder
 	list.WriteString(m.st.title.Render("vesnik release") + "\n\n")
@@ -361,13 +373,16 @@ func wrap(s string, width int) string {
 	return lipgloss.NewStyle().Width(max(20, width)).Render(s)
 }
 
+func glamourStyle(dark bool) string {
+	if dark {
+		return "dark"
+	}
+	return "light"
+}
+
 // Run shows the review screen and reports whether the user accepted.
 func Run(ctx context.Context, plan *release.Plan, p Proposer) (bool, error) {
-	style := "light"
-	if lipgloss.HasDarkBackground(os.Stdin, os.Stdout) {
-		style = "dark"
-	}
-	m := New(ctx, plan, p, style)
+	m := New(ctx, plan, p, glamourStyle(lipgloss.HasDarkBackground(os.Stdin, os.Stdout)))
 	if _, err := tea.NewProgram(m, tea.WithContext(ctx)).Run(); err != nil {
 		return false, err
 	}
