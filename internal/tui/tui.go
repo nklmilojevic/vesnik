@@ -114,7 +114,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = errStyle.Render("regenerate failed: " + msg.err.Error())
 		} else {
 			msg.it.Proposal, msg.it.Notes, msg.it.AIError = msg.p, msg.p.Notes, nil
-			if err := m.plan.SetBump(msg.it, msg.p.Bump); err != nil {
+			if err := m.plan.SetBump(msg.it, m.plan.Cap(msg.p.Bump)); err != nil {
 				m.status = errStyle.Render(err.Error())
 			} else {
 				m.status = goodStyle.Render("regenerated " + msg.it.Pkg.Name)

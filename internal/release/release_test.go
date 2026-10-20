@@ -583,3 +583,35 @@ type failingForge struct{ *fakeForge }
 func (failingForge) CreateRelease(context.Context, github.Release) (github.Release, error) {
 	return github.Release{}, errors.New("502 Bad Gateway")
 }
+
+func TestMaxBumpCapsTheModelButNotAnExplicitBump(t *testing.T) {
+	f := newFixture(t, "max_bump: minor\n", map[string]string{"go.mod": "module x\n"}, "v2.4.7")
+	f.commitAndPush(t, "a.go", "package x", "feat!: drop the old flag")
+	f.ai.bump = version.Major
+	ctx := context.Background()
+	plan, err := f.env.Plan(ctx, Options{})
+	if err != nil || plan.Items[0].Tag != "v2.5.0" {
+		t.Fatalf("capped plan = %+v, %v", plan.Items[0], err)
+	}
+	plan, err = f.env.Plan(ctx, Options{Bump: version.Major})
+	if err != nil || plan.Items[0].Tag != "v3.0.0" {
+		t.Fatalf("explicit major = %+v, %v", plan.Items[0], err)
+	}
+}
+
+func TestDefaultBumpWhenTheModelIsUnavailable(t *testing.T) {
+	f := newFixture(t, "ai: {on_error: plain}\n", map[string]string{"go.mod": "module x\n"}, "v2.4.7")
+	f.commitAndPush(t, "a.go", "package x", "ABC-123: Add the export button")
+	f.ai.err = errors.New("timeout")
+	ctx := context.Background()
+	plan, err := f.env.Plan(ctx, Options{DefaultBump: version.Minor})
+	if err != nil || plan.Items[0].Tag != "v2.5.0" {
+		t.Fatalf("default bump = %+v, %v", plan.Items[0], err)
+	}
+	f.ai.err = nil
+	f.ai.bump = version.Patch
+	plan, err = f.env.Plan(ctx, Options{DefaultBump: version.Minor})
+	if err != nil || plan.Items[0].Tag != "v2.4.8" {
+		t.Fatalf("the model's bump must win over the default: %+v, %v", plan.Items[0], err)
+	}
+}

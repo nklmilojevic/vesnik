@@ -191,3 +191,13 @@ func TestAIUnavailableWarningClearsAfterRegenerate(t *testing.T) {
 		t.Fatal("warning stayed after a successful regenerate")
 	}
 }
+
+func TestRegenerateRespectsMaxBump(t *testing.T) {
+	m, plan := newModel(t, fakeProposer{p: ai.Proposal{Bump: version.Major, Notes: "## Other changes\n\n- Gone."}})
+	plan.MaxBump = version.Minor
+	cmd := press(m, "r")
+	m.Update(cmd())
+	if it := m.current(); it.Bump != version.Minor || it.Tag != "api@v1.1.0" {
+		t.Fatalf("after regenerate: %s %s", it.Bump, it.Tag)
+	}
+}

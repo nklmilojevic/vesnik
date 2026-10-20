@@ -119,6 +119,7 @@ changelog:
   file: CHANGELOG.md
 
 breaking_bumps_minor: true  # below 1.0.0, breaking changes bump minor
+max_bump: minor             # cap the model's bump, e.g. for apps that stay on 1.x
 branch: main                # defaults to origin's default branch
 remote: origin
 
@@ -143,6 +144,10 @@ error, no network). `fail` (the default) stops before anything changes.
 types, the GitHub Release carries GitHub's generated notes, and a changelog
 lists the commit subjects. The review shows a warning, and `r` retries the
 model.
+
+`vesnik release --default-bump minor` sets the bump used when the model is
+unavailable; otherwise the commit types decide it. `--bump` always wins over
+the model and is not capped by `max_bump`.
 
 ## Exit codes
 

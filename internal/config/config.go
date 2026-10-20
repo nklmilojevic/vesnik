@@ -34,8 +34,11 @@ type Config struct {
 	Branch    string    `yaml:"branch"`
 	Remote    string    `yaml:"remote"`
 	// BreakingBumpsMinor keeps breaking changes on a minor bump below 1.0.0.
-	BreakingBumpsMinor *bool     `yaml:"breaking_bumps_minor"`
-	Packages           []Package `yaml:"packages"`
+	BreakingBumpsMinor *bool `yaml:"breaking_bumps_minor"`
+	// MaxBump caps the bump the model or the fallback picks; explicit
+	// --bump and changes in the review are not capped.
+	MaxBump  string    `yaml:"max_bump"`
+	Packages []Package `yaml:"packages"`
 }
 
 // AI configures how a model failure is handled.
@@ -200,6 +203,11 @@ func (c *Config) defaults(repoName string) {
 }
 
 func (c *Config) validate(root string) error {
+	if c.MaxBump != "" {
+		if _, err := version.ParseBump(c.MaxBump); err != nil {
+			return fmt.Errorf("max_bump: %w", err)
+		}
+	}
 	if c.AI.OnError != "fail" && c.AI.OnError != "plain" {
 		return fmt.Errorf("ai.on_error %q: want fail or plain", c.AI.OnError)
 	}

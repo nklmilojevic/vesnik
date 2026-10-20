@@ -102,6 +102,7 @@ func TestLoadRejects(t *testing.T) {
 		"file rule both":    "packages: [{files: [{file: x, regex: 'a', key: b}]}]",
 		"file rule neither": "packages: [{files: [{file: x}]}]",
 		"bad ai on_error":   "ai: {on_error: ignore}",
+		"bad max_bump":      "max_bump: huge",
 	}
 	for name, content := range tests {
 		t.Run(name, func(t *testing.T) {

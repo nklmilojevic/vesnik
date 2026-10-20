@@ -60,6 +60,9 @@ type Options struct {
 	Bump version.Bump
 	// Pre makes pre-releases with this identifier, e.g. "rc".
 	Pre string
+	// DefaultBump is used when the model is unavailable, in place of the
+	// bump the conventional commit types call for.
+	DefaultBump version.Bump
 }
 
 // Item is the release of one package.
@@ -110,12 +113,22 @@ func (it *Item) Warning() string {
 type Plan struct {
 	Items []*Item
 	Pre   string
-	opts  version.Options
+	// MaxBump caps suggested bumps; empty means no cap.
+	MaxBump version.Bump
+	opts    version.Options
 }
 
 // NewPlan builds a plan from items, for callers that assemble one by hand.
 func NewPlan(opts version.Options, items ...*Item) *Plan {
 	return &Plan{Items: items, Pre: opts.Pre, opts: opts}
+}
+
+// Cap limits a suggested bump to the configured max_bump.
+func (p *Plan) Cap(b version.Bump) version.Bump {
+	if p.MaxBump != "" && b.Rank() > p.MaxBump.Rank() {
+		return p.MaxBump
+	}
+	return b
 }
 
 // Active returns the items that will be released.
@@ -147,6 +160,7 @@ func (e *Env) Plan(ctx context.Context, opts Options) (*Plan, error) {
 		return nil, err
 	}
 	plan := NewPlan(version.Options{Pre: opts.Pre, BreakingBumpsMinor: *e.Cfg.BreakingBumpsMinor})
+	plan.MaxBump = version.Bump(e.Cfg.MaxBump)
 	for _, pkg := range pkgs {
 		it, err := e.item(ctx, pkg, opts.Pre)
 		if err != nil {
@@ -161,6 +175,9 @@ func (e *Env) Plan(ctx context.Context, opts Options) (*Plan, error) {
 		g.Go(func() error {
 			e.logf("Asking %s about %s (%d commits)…", e.AI.Name(), it.Pkg.Name, len(it.Changes.Changes))
 			b := it.Floor
+			if opts.DefaultBump != "" {
+				b = opts.DefaultBump
+			}
 			if err := e.Propose(gctx, it); err != nil {
 				if e.Cfg.AI.OnError != "plain" {
 					return fmt.Errorf("%s: %w", it.Pkg.Name, err)
@@ -170,6 +187,7 @@ func (e *Env) Plan(ctx context.Context, opts Options) (*Plan, error) {
 			} else {
 				b = it.Proposal.Bump
 			}
+			b = plan.Cap(b)
 			if opts.Bump != "" {
 				b = opts.Bump
 			}

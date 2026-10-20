@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -17,6 +18,7 @@ var now = time.Now
 func newReleaseCmd(g *globals, planOnly bool) *cobra.Command {
 	var (
 		bump     string
+		fallback string
 		pre      string
 		dryRun   bool
 		yes      bool
@@ -45,6 +47,13 @@ model again, b changes the bump, s skips a package, q aborts.`,
 					return err
 				}
 				opts.Bump = b
+			}
+			if fallback != "" {
+				b, err := version.ParseBump(fallback)
+				if err != nil {
+					return fmt.Errorf("--default-bump: %w", err)
+				}
+				opts.DefaultBump = b
 			}
 			if !dryRun && !yes && !isTerminal(os.Stdin) {
 				return errors.New("the review needs a terminal; run it interactively, or pass --yes to accept the model's plan")
@@ -101,6 +110,7 @@ model again, b changes the bump, s skips a package, q aborts.`,
 	}
 	f := cmd.Flags()
 	f.StringVar(&bump, "bump", "", "use this bump for every package instead of the model's: patch, minor or major")
+	f.StringVar(&fallback, "default-bump", "", "bump to use when the model is unavailable (ai.on_error: plain), instead of the commit types")
 	f.StringVar(&pre, "pre", "", "make a pre-release with this identifier, e.g. rc or beta; release without it to promote")
 	f.StringSliceVarP(&packages, "package", "p", nil, "release only these packages (repeatable)")
 	if planOnly {
