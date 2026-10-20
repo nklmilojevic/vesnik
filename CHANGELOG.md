@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.1 - 2026-10-20
+
+This release fixes release plans for Cargo workspace members. It also stops the test suite from changing a developer's repository when a git hook runs it.
+
+### Fixes
+
+- Release plans for a workspace member now list the `Cargo.lock` that changes, and resolve paths correctly with `-C`. The test suite no longer changes the developer's Git repository when a git hook runs it.
+
 ## v0.2.0 - 2026-10-20
 
 This release gives the user more control over the suggested version bump. The user can now limit the bump and set a fallback bump.
