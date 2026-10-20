@@ -46,5 +46,5 @@ The dev shell installs the lefthook hooks on first entry. Never commit with
 
 - Base branch is `main`. Conventional commits: `feat:`, `fix:`, `docs:`,
   `refactor:`, `test:`, `chore:`. The body says why.
-- Releases are cut with vesnik itself: `vesnik release`. The release
+- Releases are cut with vesnik itself: `vesnik release --yes`. The release
   workflow attaches binaries and warms the Nix cache.
