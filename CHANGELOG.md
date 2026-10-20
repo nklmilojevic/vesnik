@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.2 - 2026-10-20
+
+This release fixes the terminal user interface (TUI). The TUI now keeps your terminal clean and follows the background colour.
+
+### Fixes
+
+- The TUI stays on the alternate screen until it quits, so no frame is drawn on your terminal. It also updates its colours when the terminal background changes.
+
 ## v0.2.1 - 2026-10-20
 
 This release fixes release plans for Cargo workspace members. It also stops the test suite from changing a developer's repository when a git hook runs it.
