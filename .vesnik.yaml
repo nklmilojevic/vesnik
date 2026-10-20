@@ -1,0 +1,7 @@
+provider: claude
+model: claude-haiku-5-5
+
+style:
+  product: "AI-written release notes and version bumps"
+
+breaking_bumps_minor: true
