@@ -59,12 +59,13 @@ func (e *Env) Notes(ctx context.Context, pkgName, tag string) (*Item, error) {
 	if v.Prerelease() != "" {
 		base = latest
 	}
-	bumper, err := ecosystem.For(pkg.Ecosystem, filepath.Join(e.Repo.Dir, pkg.Path))
+	dir := filepath.Join(e.Repo.Dir, pkg.Path)
+	bumper, err := ecosystem.For(pkg.Ecosystem, dir)
 	if err != nil {
 		return nil, err
 	}
 	it := &Item{
-		Pkg: pkg, Template: tmpl, Bumper: bumper,
+		Pkg: pkg, Template: tmpl, Bumper: bumper, Dir: dir,
 		Changelog: e.Cfg.Changelog.PathFor(pkg.Path),
 		Current:   base.Version, CurrentTag: base.Tag,
 		LastFinal: final.Version, LastFinalTag: final.Tag,
