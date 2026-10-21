@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.3 - 2026-10-21
+
+This release updates the Anthropic SDK that vesnik uses. No commands, flags, or config fields change.
+
 ## v0.2.2 - 2026-10-20
 
 This release fixes the terminal user interface (TUI). The TUI now keeps your terminal clean and follows the background colour.
