@@ -1,5 +1,7 @@
 { lib
+, stdenv
 , buildGoModule
+, installShellFiles
 , git
 , version
 ,
@@ -27,6 +29,15 @@ buildGoModule {
     "-w"
     "-X main.version=${version}"
   ];
+
+  nativeBuildInputs = [ installShellFiles ];
+
+  postInstall = lib.optionalString (stdenv.buildPlatform.canExecute stdenv.hostPlatform) ''
+    installShellCompletion --cmd vesnik \
+      --bash <($out/bin/vesnik completion bash) \
+      --fish <($out/bin/vesnik completion fish) \
+      --zsh <($out/bin/vesnik completion zsh)
+  '';
 
   # The tests drive real git repositories.
   nativeCheckInputs = [ git ];
