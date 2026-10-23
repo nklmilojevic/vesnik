@@ -64,6 +64,17 @@ type Error struct {
 
 func (e *Error) Error() string { return fmt.Sprintf("GitHub API %d: %s", e.Status, e.Message) }
 
+// RateLimited reports whether GitHub refused a request for its primary or
+// secondary rate limit.
+func RateLimited(err error) bool {
+	apiErr, ok := errors.AsType[*Error](err)
+	if !ok {
+		return false
+	}
+	return apiErr.Status == http.StatusTooManyRequests ||
+		apiErr.Status == http.StatusForbidden && strings.Contains(strings.ToLower(apiErr.Message), "rate limit")
+}
+
 // retries is how many times a request that is safe to repeat is sent before
 // a transient failure is returned.
 const retries = 3

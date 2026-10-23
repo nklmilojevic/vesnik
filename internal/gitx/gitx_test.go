@@ -51,7 +51,7 @@ func TestTagsCleanAndBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	tr.Git("tag", "web@v2.0.0")
-	tags, err := tr.Tags(ctx, "api@v*")
+	tags, err := tr.Tags(ctx, "api@v*", "")
 	if err != nil || len(tags) != 1 || tags[0] != "api@v1.0.0" {
 		t.Fatalf("Tags = %v, %v", tags, err)
 	}

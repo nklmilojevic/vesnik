@@ -23,7 +23,7 @@ func (e *Env) Notes(ctx context.Context, pkgName, tag string) (*Item, error) {
 		return nil, err
 	}
 	if tag == "" {
-		it, err := e.item(ctx, pkg, "")
+		it, err := e.item(ctx, e.Forge, pkg, "")
 		if err != nil {
 			return nil, err
 		}
@@ -44,7 +44,7 @@ func (e *Env) Notes(ctx context.Context, pkgName, tag string) (*Item, error) {
 	if !e.Repo.RefExists(ctx, tag) {
 		return nil, fmt.Errorf("unknown tag %s", tag)
 	}
-	tags, err := e.Repo.Tags(ctx, tmpl.Glob())
+	tags, err := e.Repo.Tags(ctx, tmpl.Glob(), tag)
 	if err != nil {
 		return nil, err
 	}
@@ -75,6 +75,7 @@ func (e *Env) Notes(ctx context.Context, pkgName, tag string) (*Item, error) {
 	if err != nil {
 		return nil, err
 	}
+	e.warnLookups(pkg.Name, it.Changes)
 	if len(it.Changes.Changes) == 0 {
 		return nil, fmt.Errorf("%s: no changes between %s and %s", pkg.Name, orFirst(base.Tag), tag)
 	}

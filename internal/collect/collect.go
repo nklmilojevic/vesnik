@@ -18,6 +18,35 @@ type PRSource interface {
 	PullsForCommit(ctx context.Context, sha string) ([]github.PR, error)
 }
 
+// StopOnRateLimit returns a PRSource that, once src is refused for GitHub's
+// rate limit, refuses every later lookup without sending it. Share one
+// across the collections of a release so the stop holds for every package.
+func StopOnRateLimit(src PRSource) PRSource {
+	if src == nil {
+		return nil
+	}
+	if s, ok := src.(*stopper); ok {
+		return s
+	}
+	return &stopper{src: src}
+}
+
+type stopper struct {
+	src PRSource
+	err atomic.Pointer[error]
+}
+
+func (s *stopper) PullsForCommit(ctx context.Context, sha string) ([]github.PR, error) {
+	if err := s.err.Load(); err != nil {
+		return nil, *err
+	}
+	prs, err := s.src.PullsForCommit(ctx, sha)
+	if github.RateLimited(err) {
+		s.err.CompareAndSwap(nil, &err)
+	}
+	return prs, err
+}
+
 // Change is one commit with its pull requests.
 type Change struct {
 	Commit gitx.Commit
@@ -32,6 +61,9 @@ type Set struct {
 	// MissingPRs counts commits whose pull request lookup failed; their
 	// notes rely on the commit message alone.
 	MissingPRs int
+	// RateLimited means GitHub refused lookups for its rate limit, so the
+	// remaining commits were not looked up.
+	RateLimited bool
 }
 
 // Messages returns every commit message, for the conventional-commit floor.
@@ -88,14 +120,20 @@ func Collect(ctx context.Context, repo gitx.Repo, src PRSource, path, from, to s
 	if src == nil {
 		return set, nil
 	}
+	// Every further request would fail too and keep the limit spent.
+	src = StopOnRateLimit(src)
 	// Pull requests only add context, so a failed lookup is counted, not fatal.
 	var g errgroup.Group
 	g.SetLimit(8)
 	var missing atomic.Int64
+	var limited atomic.Bool
 	for i := range set.Changes {
 		g.Go(func() error {
 			prs, err := src.PullsForCommit(ctx, set.Changes[i].Commit.Hash)
 			if err != nil {
+				if github.RateLimited(err) {
+					limited.Store(true)
+				}
 				missing.Add(1)
 				return nil
 			}
@@ -108,5 +146,6 @@ func Collect(ctx context.Context, repo gitx.Repo, src PRSource, path, from, to s
 		return Set{}, err
 	}
 	set.MissingPRs = int(missing.Load())
+	set.RateLimited = limited.Load()
 	return set, nil
 }

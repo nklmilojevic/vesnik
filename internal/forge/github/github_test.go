@@ -131,3 +131,22 @@ func TestRetriesTransientFailuresButNotReleaseCreation(t *testing.T) {
 		t.Fatalf("calls = %v", calls)
 	}
 }
+
+func TestRateLimited(t *testing.T) {
+	for msg, want := range map[string]bool{
+		"API rate limit exceeded for user ID 1.":           true,
+		"You have exceeded a secondary rate limit.":        true,
+		"Resource not accessible by personal access token": false,
+	} {
+		c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"message": msg})
+		})
+		if _, err := c.PullsForCommit(context.Background(), "abc"); RateLimited(err) != want {
+			t.Errorf("%q: RateLimited(%v) = %v", msg, err, !want)
+		}
+	}
+	if !RateLimited(&Error{Status: http.StatusTooManyRequests}) || RateLimited(errors.New("dial tcp")) {
+		t.Fatal("429 or network error misclassified")
+	}
+}
