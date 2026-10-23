@@ -64,7 +64,7 @@ model again, b changes the bump, s skips a package, q aborts.`,
 			}
 			var branch string
 			if !dryRun {
-				if branch, err = env.Preflight(ctx); err != nil {
+				if branch, err = env.Preflight(ctx, packages); err != nil {
 					return err
 				}
 			}

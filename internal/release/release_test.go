@@ -1,6 +1,7 @@
 package release
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -47,9 +48,16 @@ type fakeForge struct {
 	updated   map[int64]string
 	existing  map[string]github.Release
 	generated []string
+	prErr     error
+	prCalls   int
 }
 
-func (f *fakeForge) PullsForCommit(context.Context, string) ([]github.PR, error) { return nil, nil }
+func (f *fakeForge) PullsForCommit(context.Context, string) ([]github.PR, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.prCalls++
+	return nil, f.prErr
+}
 
 func (f *fakeForge) GenerateNotes(_ context.Context, tag, _, previous string) (string, error) {
 	f.mu.Lock()
@@ -135,7 +143,7 @@ func (f *fixture) commitAndPush(t *testing.T, path, content, msg string) {
 func (f *fixture) release(t *testing.T, opts Options) (*Plan, []Result) {
 	t.Helper()
 	ctx := context.Background()
-	branch, err := f.env.Preflight(ctx)
+	branch, err := f.env.Preflight(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +322,7 @@ func TestExecuteRollsBackOnFailure(t *testing.T) {
 	f := newFixture(t, cfg, map[string]string{"VERSION": "no version here\n"}, "v1.0.0")
 	f.commitAndPush(t, "a", "1", "fix: a")
 	ctx := context.Background()
-	branch, err := f.env.Preflight(ctx)
+	branch, err := f.env.Preflight(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,13 +354,13 @@ func TestPreflight(t *testing.T) {
 	f := newFixture(t, "", map[string]string{"a": "1"})
 
 	f.Write("a", "2")
-	if _, err := f.env.Preflight(ctx); err == nil || !strings.Contains(err.Error(), "tracked files") {
+	if _, err := f.env.Preflight(ctx, nil); err == nil || !strings.Contains(err.Error(), "tracked files") {
 		t.Fatalf("dirty: %v", err)
 	}
 	f.Git("checkout", "a")
 
 	f.Git("switch", "-q", "-c", "topic")
-	if _, err := f.env.Preflight(ctx); err == nil || !strings.Contains(err.Error(), "releases are cut from main") {
+	if _, err := f.env.Preflight(ctx, nil); err == nil || !strings.Contains(err.Error(), "releases are cut from main") {
 		t.Fatalf("branch: %v", err)
 	}
 	f.Git("switch", "-q", "main")
@@ -372,7 +380,7 @@ func TestPreflight(t *testing.T) {
 			t.Fatalf("%s", out)
 		}
 	}
-	if _, err := f.env.Preflight(ctx); err != nil {
+	if _, err := f.env.Preflight(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
 	if f.Git("log", "-1", "--format=%s") != "fix: theirs" {
@@ -381,7 +389,7 @@ func TestPreflight(t *testing.T) {
 
 	// A local commit that is not pushed blocks the release.
 	f.CommitFile("b", "1", "fix: mine")
-	if _, err := f.env.Preflight(ctx); err == nil || !strings.Contains(err.Error(), "does not match") {
+	if _, err := f.env.Preflight(ctx, nil); err == nil || !strings.Contains(err.Error(), "does not match") {
 		t.Fatalf("unpushed: %v", err)
 	}
 }
@@ -579,7 +587,7 @@ func TestPublishFailureIsAPublishError(t *testing.T) {
 	f := newFixture(t, "", map[string]string{"go.mod": "module x\n"}, "v1.0.0")
 	f.commitAndPush(t, "a.go", "package x", "fix: a")
 	ctx := context.Background()
-	branch, err := f.env.Preflight(ctx)
+	branch, err := f.env.Preflight(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -659,13 +667,71 @@ func TestPreflightRejectsLocalOnlyTag(t *testing.T) {
 	f.commitAndPush(t, "b", "1", "Release")
 	f.Git("tag", "v1.999.160")
 
-	_, err := f.env.Preflight(ctx)
+	_, err := f.env.Preflight(ctx, nil)
 	if err == nil || !strings.Contains(err.Error(), "v1.999.160 exist only in this clone, not on origin") ||
 		!strings.Contains(err.Error(), "git tag -d v1.999.160") {
 		t.Fatalf("local tag: %v", err)
 	}
 	f.Git("tag", "-d", "v1.999.160")
-	if _, err := f.env.Preflight(ctx); err != nil {
+	if _, err := f.env.Preflight(ctx, nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRateLimitStopsLookupsForTheWholePlan(t *testing.T) {
+	cfg := "packages:\n  - path: api\n  - path: web\n"
+	f := newFixture(t, cfg, map[string]string{"api/a": "0", "web/w": "0"}, "api@v1.0.0", "web@v1.0.0")
+	f.commitAndPush(t, "api/a", "1", "fix: api")
+	f.commitAndPush(t, "web/w", "1", "fix: web")
+	f.forge.prErr = &github.Error{Status: 403, Message: "API rate limit exceeded for user ID 1."}
+	var log bytes.Buffer
+	f.env.Log = &log
+
+	plan, err := f.env.Plan(context.Background(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.forge.prCalls != 1 {
+		t.Fatalf("PR lookups = %d, want 1", f.forge.prCalls)
+	}
+	for _, it := range plan.Items {
+		if !it.Changes.RateLimited || it.Changes.MissingPRs != 1 {
+			t.Fatalf("%s changes = %+v", it.Pkg.Name, it.Changes)
+		}
+	}
+	if !strings.Contains(log.String(), "web: GitHub rate limit reached") {
+		t.Fatalf("log =\n%s", log.String())
+	}
+}
+
+func TestPreflightChecksOnlySelectedPackages(t *testing.T) {
+	ctx := context.Background()
+	cfg := "packages:\n  - path: api\n  - path: web\n"
+	f := newFixture(t, cfg, map[string]string{"api/a": "0", "web/w": "0"}, "api@v1.0.0", "web@v1.0.0")
+	f.commitAndPush(t, "web/w", "1", "Release")
+	f.Git("tag", "web@v1.999.0")
+
+	if _, err := f.env.Preflight(ctx, []string{"api"}); err != nil {
+		t.Fatalf("api only: %v", err)
+	}
+	if _, err := f.env.Preflight(ctx, nil); err == nil || !strings.Contains(err.Error(), "web@v1.999.0") {
+		t.Fatalf("all packages: %v", err)
+	}
+}
+
+func TestNotesForTagWarnsWhenRateLimited(t *testing.T) {
+	f := newFixture(t, "", map[string]string{"a": "1"}, "v1.0.0")
+	f.CommitFile("b", "1", "fix: b")
+	f.Git("tag", "v1.0.1")
+	f.forge.prErr = &github.Error{Status: 429, Message: "Too Many Requests"}
+	var log bytes.Buffer
+	f.env.Log = &log
+
+	if _, err := f.env.Notes(context.Background(), "", "v1.0.1"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(log.String(), "GitHub rate limit reached") ||
+		!strings.Contains(log.String(), "lookup failed for 1 of 1 commits") {
+		t.Fatalf("log =\n%s", log.String())
 	}
 }

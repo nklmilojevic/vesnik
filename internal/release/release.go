@@ -11,6 +11,7 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -45,10 +46,14 @@ type Env struct {
 	Project string
 	Log     io.Writer
 	Now     func() time.Time
+	// logMu serializes Log writes from concurrent package steps.
+	logMu sync.Mutex
 }
 
 func (e *Env) logf(format string, args ...any) {
 	if e.Log != nil {
+		e.logMu.Lock()
+		defer e.logMu.Unlock()
 		_, _ = fmt.Fprintf(e.Log, format+"\n", args...)
 	}
 }
@@ -163,8 +168,10 @@ func (e *Env) Plan(ctx context.Context, opts Options) (*Plan, error) {
 	}
 	plan := NewPlan(version.Options{Pre: opts.Pre, BreakingBumpsMinor: *e.Cfg.BreakingBumpsMinor})
 	plan.MaxBump = version.Bump(e.Cfg.MaxBump)
+	// One rate limit covers the whole plan: later packages skip lookups too.
+	src := collect.StopOnRateLimit(e.Forge)
 	for _, pkg := range pkgs {
-		it, err := e.item(ctx, pkg, opts.Pre)
+		it, err := e.item(ctx, src, pkg, opts.Pre)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", pkg.Name, err)
 		}
@@ -228,7 +235,7 @@ func (e *Env) template(ctx context.Context, pkg *config.Package) (version.Templa
 	return tmpl, nil
 }
 
-func (e *Env) item(ctx context.Context, pkg config.Package, pre string) (*Item, error) {
+func (e *Env) item(ctx context.Context, src collect.PRSource, pkg config.Package, pre string) (*Item, error) {
 	tmpl, err := e.template(ctx, &pkg)
 	if err != nil {
 		return nil, err
@@ -255,22 +262,27 @@ func (e *Env) item(ctx context.Context, pkg config.Package, pre string) (*Item, 
 	if pre != "" {
 		it.Base = latest.Tag
 	}
-	it.Changes, err = collect.Collect(ctx, e.Repo, e.Forge, pkg.Path, it.Base, "HEAD")
+	it.Changes, err = collect.Collect(ctx, e.Repo, src, pkg.Path, it.Base, "HEAD")
 	if err != nil {
 		return nil, err
 	}
 	if len(it.Changes.Changes) == 0 {
 		it.Skip, it.Why = true, "no changes since "+orFirst(it.Base)
 	}
-	if it.Changes.RateLimited {
-		e.logf("warning: %s: GitHub rate limit reached; stopped looking up pull requests", pkg.Name)
-	}
-	if n := it.Changes.MissingPRs; n > 0 {
-		e.logf("warning: %s: pull request lookup failed for %d of %d commits; those notes use commit messages only",
-			pkg.Name, n, len(it.Changes.Changes))
-	}
+	e.warnLookups(pkg.Name, it.Changes)
 	it.Floor = version.Floor(it.Changes.Messages())
 	return it, nil
+}
+
+// warnLookups reports the pull requests whose context set's notes go without.
+func (e *Env) warnLookups(name string, set collect.Set) {
+	if set.RateLimited {
+		e.logf("warning: %s: GitHub rate limit reached; stopped looking up pull requests", name)
+	}
+	if n := set.MissingPRs; n > 0 {
+		e.logf("warning: %s: pull request lookup failed for %d of %d commits; those notes use commit messages only",
+			name, n, len(set.Changes))
+	}
 }
 
 func orFirst(tag string) string {
