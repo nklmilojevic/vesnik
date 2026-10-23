@@ -44,7 +44,7 @@ func (e *Env) Notes(ctx context.Context, pkgName, tag string) (*Item, error) {
 	if !e.Repo.RefExists(ctx, tag) {
 		return nil, fmt.Errorf("unknown tag %s", tag)
 	}
-	tags, err := e.Repo.Tags(ctx, tmpl.Glob())
+	tags, err := e.Repo.Tags(ctx, tmpl.Glob(), tag)
 	if err != nil {
 		return nil, err
 	}

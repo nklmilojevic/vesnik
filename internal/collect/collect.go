@@ -32,6 +32,9 @@ type Set struct {
 	// MissingPRs counts commits whose pull request lookup failed; their
 	// notes rely on the commit message alone.
 	MissingPRs int
+	// RateLimited means GitHub refused a lookup for its rate limit, so the
+	// remaining commits were not looked up.
+	RateLimited bool
 }
 
 // Messages returns every commit message, for the conventional-commit floor.
@@ -92,10 +95,19 @@ func Collect(ctx context.Context, repo gitx.Repo, src PRSource, path, from, to s
 	var g errgroup.Group
 	g.SetLimit(8)
 	var missing atomic.Int64
+	var limited atomic.Bool
 	for i := range set.Changes {
 		g.Go(func() error {
+			if limited.Load() {
+				missing.Add(1)
+				return nil
+			}
 			prs, err := src.PullsForCommit(ctx, set.Changes[i].Commit.Hash)
 			if err != nil {
+				// Every further request would fail too and keep the limit spent.
+				if github.RateLimited(err) {
+					limited.Store(true)
+				}
 				missing.Add(1)
 				return nil
 			}
@@ -108,5 +120,6 @@ func Collect(ctx context.Context, repo gitx.Repo, src PRSource, path, from, to s
 		return Set{}, err
 	}
 	set.MissingPRs = int(missing.Load())
+	set.RateLimited = limited.Load()
 	return set, nil
 }

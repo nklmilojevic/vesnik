@@ -634,3 +634,38 @@ func TestDefaultBumpWhenTheModelIsUnavailable(t *testing.T) {
 		t.Fatalf("the model's bump must win over the default: %+v, %v", plan.Items[0], err)
 	}
 }
+
+func TestTagHEADCannotReachIsNotTheBase(t *testing.T) {
+	f := newFixture(t, "", map[string]string{"package.json": "{\n  \"version\": \"1.0.0\"\n}\n"}, "v1.0.0")
+	f.Git("switch", "-q", "-c", "abandoned")
+	f.CommitFile("b", "1", "Release")
+	f.Git("tag", "v1.999.160")
+	f.Git("switch", "-q", "main")
+	f.Git("branch", "-q", "-D", "abandoned")
+	f.commitAndPush(t, "src/a.js", "1", "feat: add a")
+
+	plan, err := f.env.Plan(context.Background(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it := plan.Items[0]; it.Base != "v1.0.0" || it.Tag != "v1.1.0" || len(it.Changes.Changes) != 1 {
+		t.Fatalf("item = %+v", it)
+	}
+}
+
+func TestPreflightRejectsLocalOnlyTag(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "", map[string]string{"a": "1"}, "v1.0.0")
+	f.commitAndPush(t, "b", "1", "Release")
+	f.Git("tag", "v1.999.160")
+
+	_, err := f.env.Preflight(ctx)
+	if err == nil || !strings.Contains(err.Error(), "v1.999.160 exist only in this clone, not on origin") ||
+		!strings.Contains(err.Error(), "git tag -d v1.999.160") {
+		t.Fatalf("local tag: %v", err)
+	}
+	f.Git("tag", "-d", "v1.999.160")
+	if _, err := f.env.Preflight(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
