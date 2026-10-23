@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/nklmilojevic/vesnik/internal/changelog"
@@ -42,6 +43,9 @@ func (e *Env) Preflight(ctx context.Context) (string, error) {
 	if err := e.Repo.PullFF(ctx, remote, branch); err != nil {
 		return "", fmt.Errorf("%s has commits that %s/%s does not; push or drop them first: %w", branch, remote, branch, err)
 	}
+	if err := e.checkTagsPushed(ctx, remote); err != nil {
+		return "", err
+	}
 	local, err := e.Repo.Head(ctx)
 	if err != nil {
 		return "", err
@@ -54,6 +58,38 @@ func (e *Env) Preflight(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("local %s does not match %s/%s", branch, remote, branch)
 	}
 	return branch, nil
+}
+
+// checkTagsPushed fails when a tag vesnik would release from exists only in
+// this clone. A stray local tag would become the base: the wrong next
+// version, and a pull request lookup for every commit since it.
+func (e *Env) checkTagsPushed(ctx context.Context, remote string) error {
+	onRemote, err := e.Repo.RemoteTags(ctx, remote)
+	if err != nil {
+		return err
+	}
+	var local []string
+	for _, pkg := range e.Cfg.Packages {
+		tmpl, err := e.template(ctx, &pkg)
+		if err != nil {
+			return err
+		}
+		tags, err := e.Repo.Tags(ctx, tmpl.Glob(), "HEAD")
+		if err != nil {
+			return err
+		}
+		latest, final := tmpl.Latest(tags)
+		for _, tag := range []string{latest.Tag, final.Tag} {
+			if tag != "" && !onRemote[tag] && !slices.Contains(local, tag) {
+				local = append(local, tag)
+			}
+		}
+	}
+	if len(local) > 0 {
+		return fmt.Errorf("%s exist only in this clone, not on %s; push them, or delete them with `git tag -d %s`",
+			strings.Join(local, ", "), remote, strings.Join(local, " "))
+	}
+	return nil
 }
 
 // PublishError means the tags were pushed but some GitHub Releases were not

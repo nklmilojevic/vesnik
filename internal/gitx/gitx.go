@@ -92,9 +92,13 @@ func (r Repo) Clean(ctx context.Context) (bool, error) {
 	return out == "", err
 }
 
-// Tags lists tags matching a glob, or every tag for an empty glob.
-func (r Repo) Tags(ctx context.Context, glob string) ([]string, error) {
+// Tags lists tags matching a glob, or every tag for an empty glob. A
+// non-empty merged keeps only the tags reachable from that ref.
+func (r Repo) Tags(ctx context.Context, glob, merged string) ([]string, error) {
 	args := []string{"tag", "--list"}
+	if merged != "" {
+		args = append(args, "--merged", merged)
+	}
 	if glob != "" {
 		args = append(args, glob)
 	}
@@ -103,6 +107,21 @@ func (r Repo) Tags(ctx context.Context, glob string) ([]string, error) {
 		return nil, err
 	}
 	return strings.Split(out, "\n"), nil
+}
+
+// RemoteTags returns the set of tags on remote.
+func (r Repo) RemoteTags(ctx context.Context, remote string) (map[string]bool, error) {
+	out, err := r.Run(ctx, "ls-remote", "--tags", "--refs", remote)
+	if err != nil {
+		return nil, err
+	}
+	tags := map[string]bool{}
+	for line := range strings.SplitSeq(out, "\n") {
+		if _, ref, ok := strings.Cut(line, "\t"); ok {
+			tags[strings.TrimPrefix(ref, "refs/tags/")] = true
+		}
+	}
+	return tags, nil
 }
 
 // RefExists reports whether ref resolves to a commit.

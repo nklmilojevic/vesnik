@@ -216,7 +216,7 @@ func (e *Env) template(ctx context.Context, pkg *config.Package) (version.Templa
 		if err != nil {
 			return tmpl, err
 		}
-		tags, err := e.Repo.Tags(ctx, t.Glob())
+		tags, err := e.Repo.Tags(ctx, t.Glob(), "HEAD")
 		if err != nil {
 			return tmpl, err
 		}
@@ -238,7 +238,9 @@ func (e *Env) item(ctx context.Context, pkg config.Package, pre string) (*Item, 
 	if err != nil {
 		return nil, err
 	}
-	tags, err := e.Repo.Tags(ctx, tmpl.Glob())
+	// A tag HEAD cannot reach, such as one on an abandoned release merge,
+	// is not this branch's last release.
+	tags, err := e.Repo.Tags(ctx, tmpl.Glob(), "HEAD")
 	if err != nil {
 		return nil, err
 	}
@@ -259,6 +261,9 @@ func (e *Env) item(ctx context.Context, pkg config.Package, pre string) (*Item, 
 	}
 	if len(it.Changes.Changes) == 0 {
 		it.Skip, it.Why = true, "no changes since "+orFirst(it.Base)
+	}
+	if it.Changes.RateLimited {
+		e.logf("warning: %s: GitHub rate limit reached; stopped looking up pull requests", pkg.Name)
 	}
 	if n := it.Changes.MissingPRs; n > 0 {
 		e.logf("warning: %s: pull request lookup failed for %d of %d commits; those notes use commit messages only",

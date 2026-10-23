@@ -3,6 +3,7 @@ package collect
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 
@@ -53,6 +54,34 @@ func TestCollectScopesSkipsReleaseChoresAndDedupesPRs(t *testing.T) {
 	}
 	if msgs := set.Messages(); len(msgs) != 2 {
 		t.Fatalf("messages = %v", msgs)
+	}
+}
+
+type rateLimitedPRs struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (f *rateLimitedPRs) PullsForCommit(context.Context, string) ([]github.PR, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	return nil, &github.Error{Status: 403, Message: "API rate limit exceeded for user ID 1."}
+}
+
+func TestCollectStopsLookupsWhenRateLimited(t *testing.T) {
+	tr := gittest.New(t)
+	for i := range 30 {
+		tr.CommitFile("a", strconv.Itoa(i), "fix: change "+strconv.Itoa(i))
+	}
+	src := &rateLimitedPRs{}
+	set, err := Collect(context.Background(), tr.Repo, src, "", "", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only the lookups already in flight when the first refusal arrived.
+	if src.calls > 8 || !set.RateLimited || set.MissingPRs != 30 {
+		t.Fatalf("calls = %d, set = %+v", src.calls, set)
 	}
 }
 
