@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.0 - 2026-10-23
+
+This release adds shell completions to the Nix package. It also fixes how vesnik finds the last release.
+
+### New features
+
+- The Nix package now installs shell completions for bash, fish and zsh. Your shell can now complete vesnik commands after you install the package.
+
+### Fixes
+
+- vesnik now ignores tags that HEAD cannot reach, so it picks the correct last release and next version. It stops pull request lookups at the first rate-limit error, which saves your GitHub API quota.
+
 ## v0.2.3 - 2026-10-21
 
 This release updates the Anthropic SDK that vesnik uses. No commands, flags, or config fields change.
