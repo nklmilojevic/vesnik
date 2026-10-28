@@ -69,9 +69,20 @@ func TestClaudeError(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "Not logged in") {
 		t.Fatalf("err = %v", err)
 	}
+	if login := Login(err); strings.Join(login, " ") != bin+" auth login" {
+		t.Fatalf("Login = %v", login)
+	}
+	expired := fakeBin(t, "claude", `cat >/dev/null; echo '{"is_error":true,"result":"Failed to authenticate: OAuth session expired and could not be refreshed"}'; exit 1`)
+	if _, err := Propose(context.Background(), &Claude{Bin: expired}, req); Login(err) == nil {
+		t.Fatalf("expired session is not an auth error: %v", err)
+	}
 	failing := fakeBin(t, "claude", `echo "boom" >&2; exit 2`)
-	if _, err := Propose(context.Background(), &Claude{Bin: failing}, req); err == nil || !strings.Contains(err.Error(), "boom") {
+	_, err = Propose(context.Background(), &Claude{Bin: failing}, req)
+	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("err = %v", err)
+	}
+	if Login(err) != nil {
+		t.Fatalf("plain failure asks for a login: %v", err)
 	}
 }
 

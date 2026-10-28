@@ -65,15 +65,27 @@ type Model struct {
 	status   string
 	accepted bool
 	quitting bool
+
+	// login holds, for each item whose model call failed for want of a
+	// login, the command that signs in; r runs it before regenerating.
+	login map[*release.Item][]string
+	// run hands the terminal to a process; tests replace it.
+	run func(*exec.Cmd, tea.ExecCallback) tea.Cmd
 }
 
 // New builds the review screen. style is a glamour style name, such as
 // "dark", "light" or "notty".
 func New(ctx context.Context, plan *release.Plan, p Proposer, style string) *Model {
 	m := &Model{ctx: ctx, plan: plan, proposer: p, style: style, st: newStyles(style == "dark"),
-		busy: map[*release.Item]bool{}, width: 100, height: 30}
+		busy: map[*release.Item]bool{}, login: map[*release.Item][]string{}, run: tea.ExecProcess,
+		width: 100, height: 30}
 	m.view = viewport.New(viewport.WithWidth(m.width-listWidth-3), viewport.WithHeight(m.height-4))
 	m.cursor = firstActive(plan)
+	for _, it := range plan.Items {
+		if l := ai.Login(it.AIError); l != nil {
+			m.login[it] = l
+		}
+	}
 	m.refresh()
 	return m
 }
@@ -95,6 +107,11 @@ func (m *Model) Init() tea.Cmd { return tea.RequestBackgroundColor }
 type regenMsg struct {
 	it  *release.Item
 	p   ai.Proposal
+	err error
+}
+
+type loginMsg struct {
+	it  *release.Item
 	err error
 }
 
@@ -126,7 +143,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case regenMsg:
 		delete(m.busy, msg.it)
 		if msg.err != nil {
-			m.status = m.st.err.Render("regenerate failed: " + msg.err.Error())
+			status := "regenerate failed: " + msg.err.Error()
+			if l := ai.Login(msg.err); l != nil {
+				m.login[msg.it] = l
+				status += "; press r to sign in and retry"
+			}
+			m.status = m.st.err.Render(status)
 		} else {
 			msg.it.Proposal, msg.it.Notes, msg.it.AIError = msg.p, msg.p.Notes, nil
 			if err := m.plan.SetBump(msg.it, m.plan.Cap(msg.p.Bump)); err != nil {
@@ -137,6 +159,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.refresh()
 		return m, nil
+
+	case loginMsg:
+		if msg.err != nil {
+			delete(m.busy, msg.it)
+			m.status = m.st.err.Render("sign-in failed: " + msg.err.Error())
+			m.refresh()
+			return m, nil
+		}
+		// Every item asks the same provider, so one sign-in serves them all.
+		clear(m.login)
+		m.status = m.st.muted.Render("asking the model about " + msg.it.Pkg.Name + "…")
+		m.refresh()
+		return m, m.regenerate(msg.it)
 
 	case editedMsg:
 		defer func() { _ = os.Remove(msg.path) }()
@@ -213,6 +248,10 @@ func (m *Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.busy[it] = true
+		if login := m.login[it]; login != nil {
+			cmd := exec.Command(login[0], login[1:]...)
+			return m, m.run(cmd, func(err error) tea.Msg { return loginMsg{it: it, err: err} })
+		}
 		m.status = m.st.muted.Render("asking the model about " + it.Pkg.Name + "…")
 		m.refresh()
 		return m, m.regenerate(it)
@@ -252,7 +291,7 @@ func (m *Model) edit(it *release.Item) tea.Cmd {
 		return func() tea.Msg { return editedMsg{it: it, path: f.Name(), err: err} }
 	}
 	cmd := exec.Command(Editor()[0], append(Editor()[1:], f.Name())...)
-	return tea.ExecProcess(cmd, func(err error) tea.Msg { return editedMsg{it: it, path: f.Name(), err: err} })
+	return m.run(cmd, func(err error) tea.Msg { return editedMsg{it: it, path: f.Name(), err: err} })
 }
 
 // Editor returns the user's editor command from VISUAL or EDITOR.
@@ -286,7 +325,11 @@ func (m *Model) refresh() {
 		b.WriteString(m.st.warn.Render("Warning: "+w) + "\n")
 	}
 	if it.AIError != nil {
-		msg := fmt.Sprintf("AI unavailable: %v. The release uses GitHub's generated notes; press r to retry or e to write notes.", it.AIError)
+		retry := "retry"
+		if m.login[it] != nil {
+			retry = "sign in and retry"
+		}
+		msg := fmt.Sprintf("AI unavailable: %v. The release uses GitHub's generated notes; press r to %s or e to write notes.", it.AIError, retry)
 		b.WriteString(m.st.warn.Render(wrap(msg, m.view.Width())) + "\n")
 	}
 	if r := it.Proposal.Reasoning; r != "" {

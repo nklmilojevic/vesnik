@@ -143,7 +143,8 @@ error, no network). `fail` (the default) stops before anything changes.
 `plain` releases anyway: the version comes from `--bump` or the commit
 types, the GitHub Release carries GitHub's generated notes, and a changelog
 lists the commit subjects. The review shows a warning, and `r` retries the
-model.
+model. When the claude CLI is signed out or its session expired, `r` runs
+`claude auth login` first.
 
 `vesnik release --default-bump minor` sets the bump used when the model is
 unavailable; otherwise the commit types decide it. `--bump` always wins over

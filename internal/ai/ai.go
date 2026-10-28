@@ -37,6 +37,26 @@ type Provider interface {
 	JSON(ctx context.Context, req Request) ([]byte, error)
 }
 
+// AuthError is a provider failure that signing in again fixes. Login is the
+// command that signs in.
+type AuthError struct {
+	Err   error
+	Login []string
+}
+
+func (e *AuthError) Error() string { return e.Err.Error() }
+func (e *AuthError) Unwrap() error { return e.Err }
+
+// Login returns the command that signs in when err is an AuthError, and nil
+// otherwise.
+func Login(err error) []string {
+	var a *AuthError
+	if errors.As(err, &a) {
+		return a.Login
+	}
+	return nil
+}
+
 // Propose asks for release notes and a bump.
 func Propose(ctx context.Context, p Provider, req Request) (Proposal, error) {
 	req.Schema = schemaJSON

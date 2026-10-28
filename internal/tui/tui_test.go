@@ -5,6 +5,7 @@ import (
 	"errors"
 	"image/color"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -212,6 +213,80 @@ func TestAIUnavailableWarningClearsAfterRegenerate(t *testing.T) {
 	m.Update(cmd())
 	if m.current().AIError != nil || strings.Contains(m.view.View(), "AI unavailable") {
 		t.Fatal("warning stayed after a successful regenerate")
+	}
+}
+
+// runNow runs a process to completion instead of handing it the terminal.
+func runNow(c *exec.Cmd, fn tea.ExecCallback) tea.Cmd {
+	return func() tea.Msg { return fn(c.Run()) }
+}
+
+func TestRetrySignsInWhenTheLoginExpired(t *testing.T) {
+	dir := t.TempDir()
+	args, ok := filepath.Join(dir, "args"), filepath.Join(dir, "ok")
+	bin := filepath.Join(dir, "claude")
+	// The fake login fails until the ok file exists.
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" >> " + args + "\ntest -e " + ok + "\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m, plan := newModel(t, fakeProposer{p: ai.Proposal{Bump: version.Patch, Notes: "## Fixes\n\n- Back."}})
+	m.current().AIError = &ai.AuthError{Err: errors.New("claude: Failed to authenticate"), Login: []string{bin, "auth", "login"}}
+	m = New(context.Background(), plan, m.proposer, "notty")
+	m.run = runNow
+	if !strings.Contains(m.view.View(), "press r to sign in and retry") {
+		t.Fatalf("view lacks the sign-in hint:\n%s", m.view.View())
+	}
+
+	m.Update(press(m, "r")())
+	if !strings.Contains(m.status, "sign-in failed") || m.busy[m.current()] || m.login[m.current()] == nil {
+		t.Fatalf("failed sign-in: status %q, login %v", m.status, m.login)
+	}
+
+	if err := os.WriteFile(ok, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, cmd := m.Update(press(m, "r")())
+	m.Update(cmd())
+	if m.current().AIError != nil || len(m.login) != 0 || m.current().Notes != "## Fixes\n\n- Back." {
+		t.Fatalf("after sign-in: AIError %v, login %v, notes %q", m.current().AIError, m.login, m.current().Notes)
+	}
+	if got, _ := os.ReadFile(args); string(got) != "auth\nlogin\nauth\nlogin\n" {
+		t.Fatalf("login ran with %q", got)
+	}
+}
+
+func TestSignInOnlyForTheItemThatNeedsIt(t *testing.T) {
+	api := item(t, "api", "1.0.0", version.Patch)
+	cli := item(t, "cli", "1.0.0", version.Patch)
+	api.AIError = &ai.AuthError{Err: errors.New("claude: Not logged in"), Login: []string{"claude", "auth", "login"}}
+	plan := release.NewPlan(version.Options{}, api, cli)
+	for _, it := range plan.Items {
+		if err := plan.SetBump(it, version.Patch); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := New(context.Background(), plan, fakeProposer{p: ai.Proposal{Bump: version.Patch, Notes: "## Fixes\n\n- New."}}, "notty")
+	m.run = func(*exec.Cmd, tea.ExecCallback) tea.Cmd {
+		t.Fatal("r on cli ran a sign-in")
+		return nil
+	}
+	press(m, "j")
+	if strings.Contains(m.view.View(), "sign in") {
+		t.Fatalf("cli shows the sign-in hint:\n%s", m.view.View())
+	}
+	m.Update(press(m, "r")())
+	if cli.Notes != "## Fixes\n\n- New." || m.login[api] == nil {
+		t.Fatalf("cli notes %q, api login %v", cli.Notes, m.login[api])
+	}
+}
+
+func TestRegenerateAsksToSignInWhenTheLoginExpires(t *testing.T) {
+	m, _ := newModel(t, fakeProposer{err: &ai.AuthError{Err: errors.New("claude: Not logged in"), Login: []string{"claude", "auth", "login"}}})
+	cmd := press(m, "r")
+	m.Update(cmd())
+	if !strings.Contains(m.status, "press r to sign in and retry") || m.login[m.current()] == nil {
+		t.Fatalf("status %q, login %v", m.status, m.login)
 	}
 }
 
