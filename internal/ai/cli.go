@@ -55,7 +55,11 @@ func (c *Claude) JSON(ctx context.Context, req Request) ([]byte, error) {
 		return nil, fmt.Errorf("claude returned unexpected output: %w", err)
 	}
 	if res.IsError {
-		return nil, fmt.Errorf("claude: %s", res.Result)
+		err := fmt.Errorf("claude: %s", res.Result)
+		if loggedOut(res.Result) {
+			return nil, &AuthError{Err: err, Login: []string{c.Bin, "auth", "login"}}
+		}
+		return nil, err
 	}
 	if runErr != nil {
 		return nil, runErr
@@ -64,6 +68,17 @@ func (c *Claude) JSON(ctx context.Context, req Request) ([]byte, error) {
 		return []byte(res.Result), nil
 	}
 	return res.StructuredOutput, nil
+}
+
+// loggedOut reports whether a claude error asks the user to sign in again,
+// such as an expired OAuth session or a missing login.
+func loggedOut(msg string) bool {
+	for _, s := range []string{"Failed to authenticate", "Not logged in", "/login", "auth login"} {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // Codex runs `codex exec` read-only in an empty directory, with the output

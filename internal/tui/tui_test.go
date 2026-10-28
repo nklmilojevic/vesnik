@@ -215,6 +215,37 @@ func TestAIUnavailableWarningClearsAfterRegenerate(t *testing.T) {
 	}
 }
 
+func TestRetrySignsInWhenTheLoginExpired(t *testing.T) {
+	m, _ := newModel(t, fakeProposer{p: ai.Proposal{Bump: version.Patch, Notes: "## Fixes\n\n- Back."}})
+	m.current().AIError = &ai.AuthError{Err: errors.New("claude: Failed to authenticate"), Login: []string{"claude", "auth", "login"}}
+	m = New(context.Background(), m.plan, m.proposer, "notty")
+	if !strings.Contains(m.view.View(), "press r to sign in and retry") {
+		t.Fatalf("view lacks the sign-in hint:\n%s", m.view.View())
+	}
+	if cmd := press(m, "r"); cmd == nil || !m.busy[m.current()] {
+		t.Fatal("r did not start the sign-in")
+	}
+	m.Update(loginMsg{it: m.current(), err: errors.New("exit status 1")})
+	if !strings.Contains(m.status, "sign-in failed") || m.busy[m.current()] || m.login == nil {
+		t.Fatalf("failed sign-in: status %q, login %v", m.status, m.login)
+	}
+	press(m, "r")
+	_, cmd := m.Update(loginMsg{it: m.current()})
+	m.Update(cmd())
+	if m.current().AIError != nil || m.login != nil || m.current().Notes != "## Fixes\n\n- Back." {
+		t.Fatalf("after sign-in: AIError %v, login %v, notes %q", m.current().AIError, m.login, m.current().Notes)
+	}
+}
+
+func TestRegenerateAsksToSignInWhenTheLoginExpires(t *testing.T) {
+	m, _ := newModel(t, fakeProposer{err: &ai.AuthError{Err: errors.New("claude: Not logged in"), Login: []string{"claude", "auth", "login"}}})
+	cmd := press(m, "r")
+	m.Update(cmd())
+	if !strings.Contains(m.status, "press r to sign in and retry") || m.login == nil {
+		t.Fatalf("status %q, login %v", m.status, m.login)
+	}
+}
+
 func TestRegenerateRespectsMaxBump(t *testing.T) {
 	m, plan := newModel(t, fakeProposer{p: ai.Proposal{Bump: version.Major, Notes: "## Other changes\n\n- Gone."}})
 	plan.MaxBump = version.Minor
