@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.0 - 2026-10-28
+
+This release lets you sign in to Claude from the review. You do not need to quit vesnik to renew an expired login.
+
+### New features
+
+- The review now signs you in again when the claude login expired, so `r` no longer fails with the same error. `r` runs `claude auth login` in the terminal, then regenerates the notes.
+
 ## v0.3.0 - 2026-10-23
 
 This release adds shell completions to the Nix package. It also fixes how vesnik finds the last release.
