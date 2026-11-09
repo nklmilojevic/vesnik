@@ -11,7 +11,7 @@ require (
 	github.com/anthropics/anthropic-sdk-go/v2 v2.7.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/oauth2 v0.37.0
-	golang.org/x/sync v0.24.0
+	golang.org/x/sync v0.25.0
 	golang.org/x/term v0.47.0
 	gopkg.in/yaml.v3 v3.0.1
 )
