@@ -4,4 +4,11 @@
   postUpdateOptions: ["gomodTidy", "gomodUpdateImportPaths"],
   nix: { enabled: true },
   lockFileMaintenance: { enabled: true },
+  packageRules: [
+    {
+      description: "The release workflow holds the GitHub release token and the macOS signing and notarization secrets, and runs the composite actions too: Action updates are reviewed, never merged automatically.",
+      matchFileNames: [".github/workflows/**", ".github/actions/**"],
+      automerge: false,
+    },
+  ],
 }
