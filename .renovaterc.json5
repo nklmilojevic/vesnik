@@ -1,6 +1,6 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
-  extends: ["local>nklmilojevic/renovate-config", "helpers:pinGitHubActionDigests"],
+  extends: ["local>nklmilojevic/renovate-config", "local>nklmilojevic/renovate-config:go-vendor-hash", "helpers:pinGitHubActionDigests"],
   postUpdateOptions: ["gomodTidy", "gomodUpdateImportPaths"],
   nix: { enabled: true },
   lockFileMaintenance: { enabled: true },
