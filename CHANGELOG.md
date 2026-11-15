@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.4.1 - 2026-11-15
+
+This release fixes known security issues in vesnik dependencies. It also fixes a terminal resize problem and a retry problem in the API client.
+
+### Fixes
+
+- The `golang.org/x/text` module is updated to v0.41.0. This fixes an infinite loop on invalid input and a crash on some input.
+- The `golang.org/x/crypto`, `golang.org/x/net` and `google.golang.org/grpc` modules are updated. These updates fix known security issues.
+- The `github.com/yuin/goldmark` module is updated. This fixes a cross-site scripting issue.
+- The `go.opentelemetry.io/otel/trace` module is updated. This fixes a length limit that some values did not respect.
+- The terminal UI now ignores implausible terminal resize reports. This fixes a security issue in terminal size handling.
+- The Anthropic SDK no longer repeats create requests that a retry could duplicate.
+
 ## v0.4.0 - 2026-10-28
 
 This release lets you sign in to Claude from the review. You do not need to quit vesnik to renew an expired login.
