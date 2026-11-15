@@ -1,17 +1,14 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
-  extends: ["config:recommended", "helpers:pinGitHubActionDigests"],
+  extends: ["local>nklmilojevic/renovate-config", "helpers:pinGitHubActionDigests"],
   postUpdateOptions: ["gomodTidy", "gomodUpdateImportPaths"],
   nix: { enabled: true },
   lockFileMaintenance: { enabled: true },
   packageRules: [
     {
-      description: "One PR for non-major Go module updates; majors stay separate",
-      matchManagers: ["gomod"],
-      matchDatasources: ["go"],
-      matchUpdateTypes: ["minor", "patch", "digest"],
-      groupName: "Go modules (non-major)",
-      groupSlug: "go-modules-non-major",
+      description: "The release workflow holds the GitHub release token and the macOS signing and notarization secrets, and runs the composite actions too: Action updates are reviewed, never merged automatically.",
+      matchFileNames: [".github/workflows/**", ".github/actions/**"],
+      automerge: false,
     },
   ],
 }
