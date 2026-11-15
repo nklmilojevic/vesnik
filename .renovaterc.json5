@@ -4,4 +4,14 @@
   postUpdateOptions: ["gomodTidy", "gomodUpdateImportPaths"],
   nix: { enabled: true },
   lockFileMaintenance: { enabled: true },
+  packageRules: [
+    {
+      description: "One PR for non-major Go module updates; majors stay separate",
+      matchManagers: ["gomod"],
+      matchDatasources: ["go"],
+      matchUpdateTypes: ["minor", "patch", "digest"],
+      groupName: "Go modules (non-major)",
+      groupSlug: "go-modules-non-major",
+    },
+  ],
 }
