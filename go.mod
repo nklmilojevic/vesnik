@@ -3,12 +3,12 @@ module github.com/nklmilojevic/vesnik
 go 1.26.0
 
 require (
-	charm.land/bubbles/v2 v2.2.1
+	charm.land/bubbles/v2 v2.2.2
 	charm.land/bubbletea/v2 v2.1.2
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.1.1
 	github.com/Masterminds/semver/v3 v3.5.0
-	github.com/anthropics/anthropic-sdk-go/v2 v2.12.0
+	github.com/anthropics/anthropic-sdk-go/v2 v2.13.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/oauth2 v0.38.0
 	golang.org/x/sync v0.25.0
@@ -46,11 +46,11 @@ require (
 	github.com/invopop/jsonschema v0.14.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
-	github.com/mattn/go-runewidth v0.0.30 // indirect
+	github.com/mattn/go-runewidth v0.0.31 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
-	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/rivo/uniseg v0.4.8-0.20261110175422-3a370411ca06 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
